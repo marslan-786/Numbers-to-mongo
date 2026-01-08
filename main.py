@@ -50,6 +50,26 @@ async def get_stats():
         "failed": total_failed
     })
 
+@app.get("/failed-images")
+async def get_failed_images():
+    """Fetch last 10 failed entries with images"""
+    # Sort by timestamp descending (newest first)
+    cursor = db[COL_FAILED].find(
+        {"error_screenshot": {"$exists": True, "$ne": None}}, 
+        {"phone": 1, "error_screenshot": 1, "timestamp": 1, "_id": 1}
+    ).sort("timestamp", -1).limit(10)
+    
+    images = []
+    async for doc in cursor:
+        images.append({
+            "id": str(doc["_id"]),
+            "phone": doc.get("phone", "Unknown"),
+            "image": doc.get("error_screenshot"),
+            "timestamp": doc.get("timestamp").strftime("%H:%M:%S") if doc.get("timestamp") else ""
+        })
+    
+    return JSONResponse({"images": images})
+
 @app.post("/upload")
 async def upload_numbers(file: UploadFile = File(...)):
     try:
@@ -60,7 +80,6 @@ async def upload_numbers(file: UploadFile = File(...)):
         for line in decoded_content:
             phone = line.strip()
             if phone:
-                # Check duplication in Pending only (optional: check success/failed too if needed)
                 exists = await db[COL_PENDING].find_one({"phone": phone})
                 if not exists:
                     new_numbers.append({"phone": phone, "status": "pending"})
@@ -75,7 +94,6 @@ async def upload_numbers(file: UploadFile = File(...)):
 
 @app.get("/download/{category}")
 async def download_numbers(category: str):
-    """Download list as .txt file"""
     target_col = None
     if category == "pending": target_col = db[COL_PENDING]
     elif category == "success": target_col = db[COL_SUCCESS]
@@ -84,7 +102,6 @@ async def download_numbers(category: str):
     if target_col is None:
         raise HTTPException(status_code=400, detail="Invalid category")
 
-    # Fetch all numbers
     cursor = target_col.find({}, {"phone": 1, "_id": 0})
     numbers = []
     async for doc in cursor:
@@ -99,7 +116,6 @@ async def download_numbers(category: str):
 
 @app.delete("/delete_all")
 async def delete_all_numbers():
-    """Clear ALL collections"""
     try:
         r1 = await db[COL_PENDING].delete_many({})
         r2 = await db[COL_SUCCESS].delete_many({})

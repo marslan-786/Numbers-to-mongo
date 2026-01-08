@@ -1,20 +1,20 @@
 import os
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel
-import shutil
+import io
 
 # --- 🔥 MONGO DB CONFIG 🔥 ---
 MONGO_URI = "mongodb://mongo:AEvrikOWlrmJCQrDTQgfGtqLlwhwLuAA@crossover.proxy.rlwy.net:29609"
 DB_NAME = "number_manager"
-COLLECTION_NAME = "phone_numbers"
+COL_PENDING = "phone_numbers"
+COL_SUCCESS = "success_numbers"
+COL_FAILED = "failed_numbers"
 
 # --- APP INIT ---
 app = FastAPI()
 
-# CORS (اگر آپ لوکل ہوسٹ پر ٹیسٹ کر رہے ہیں)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,13 +26,11 @@ app.add_middleware(
 # MongoDB Client
 client = AsyncIOMotorClient(MONGO_URI)
 db = client[DB_NAME]
-collection = db[COLLECTION_NAME]
 
 # --- ROUTES ---
 
 @app.get("/")
 async def read_root():
-    """HTML فائل سرو کرتا ہے"""
     try:
         with open("index.html", "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
@@ -41,21 +39,19 @@ async def read_root():
 
 @app.get("/stats")
 async def get_stats():
-    """ٹوٹل، سکسیس اور فیلڈ نمبرز کا سٹیٹس دیتا ہے"""
-    total = await collection.count_documents({})
-    success = await collection.count_documents({"status": "success"})
-    failed = await collection.count_documents({"status": "failed"})
-    # "pending" وہ ہیں جو نہ سکسیس ہیں نہ فیلڈ
+    """Fetch counts from 3 separate collections"""
+    total_pending = await db[COL_PENDING].count_documents({})
+    total_success = await db[COL_SUCCESS].count_documents({})
+    total_failed = await db[COL_FAILED].count_documents({})
     
     return JSONResponse({
-        "total": total,
-        "success": success,
-        "failed": failed
+        "pending": total_pending,
+        "success": total_success,
+        "failed": total_failed
     })
 
 @app.post("/upload")
 async def upload_numbers(file: UploadFile = File(...)):
-    """فائل سے نمبر پڑھ کر MongoDB میں ایڈ کرتا ہے (ڈپلیکیٹ سے بچتا ہے)"""
     try:
         content = await file.read()
         decoded_content = content.decode("utf-8").splitlines()
@@ -64,32 +60,56 @@ async def upload_numbers(file: UploadFile = File(...)):
         for line in decoded_content:
             phone = line.strip()
             if phone:
-                # صرف تب ایڈ کریں اگر پہلے سے موجود نہ ہو (Optional check for speed vs accuracy)
-                # یہاں ہم سیدھا insert_one کر رہے ہیں، لیکن بلک رائٹ بہتر ہے
-                # چونکہ آپ نے کہا ایڈ ہو جائیں، ہم duplicates کا چیک بھی لگا سکتے ہیں یا سب ڈال سکتے ہیں۔
-                # یہاں میں چیک کر رہا ہوں کہ اگر نمبر پہلے سے ہے تو دوبارہ نہ ڈالے (تاکہ ڈیٹا صاف رہے)
-                exists = await collection.find_one({"phone": phone})
+                # Check duplication in Pending only (optional: check success/failed too if needed)
+                exists = await db[COL_PENDING].find_one({"phone": phone})
                 if not exists:
                     new_numbers.append({"phone": phone, "status": "pending"})
         
         if new_numbers:
-            await collection.insert_many(new_numbers)
+            await db[COL_PENDING].insert_many(new_numbers)
             
-        return {"status": "success", "message": f"{len(new_numbers)} new numbers added!"}
+        return {"status": "success", "message": f"{len(new_numbers)} numbers queued!"}
     
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
+@app.get("/download/{category}")
+async def download_numbers(category: str):
+    """Download list as .txt file"""
+    target_col = None
+    if category == "pending": target_col = db[COL_PENDING]
+    elif category == "success": target_col = db[COL_SUCCESS]
+    elif category == "failed": target_col = db[COL_FAILED]
+    
+    if target_col is None:
+        raise HTTPException(status_code=400, detail="Invalid category")
+
+    # Fetch all numbers
+    cursor = target_col.find({}, {"phone": 1, "_id": 0})
+    numbers = []
+    async for doc in cursor:
+        numbers.append(doc['phone'])
+    
+    file_content = "\n".join(numbers)
+    return StreamingResponse(
+        io.BytesIO(file_content.encode()),
+        media_type="text/plain",
+        headers={"Content-Disposition": f"attachment; filename={category}_numbers.txt"}
+    )
+
 @app.delete("/delete_all")
 async def delete_all_numbers():
-    """تمام نمبرز کو ڈیلیٹ کرتا ہے"""
+    """Clear ALL collections"""
     try:
-        result = await collection.delete_many({})
-        return {"status": "success", "deleted_count": result.deleted_count}
+        r1 = await db[COL_PENDING].delete_many({})
+        r2 = await db[COL_SUCCESS].delete_many({})
+        r3 = await db[COL_FAILED].delete_many({})
+        
+        total_deleted = r1.deleted_count + r2.deleted_count + r3.deleted_count
+        return {"status": "success", "deleted_count": total_deleted}
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 if __name__ == "__main__":
     import uvicorn
-    # روٹ فولڈر سے چلانے کے لیے
     uvicorn.run(app, host="0.0.0.0", port=8000)

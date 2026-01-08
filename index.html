@@ -17,6 +17,7 @@
             --success-color: #2ecc71;
             --danger-color: #e74c3c;
             --text-white: #ffffff;
+            --modal-bg: rgba(0, 0, 0, 0.85);
         }
 
         body {
@@ -64,17 +65,14 @@
             text-decoration: none;
         }
 
-        .btn-upload {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
+        .btn-upload { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
         .btn-upload:hover { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(118, 75, 162, 0.4); }
 
-        .btn-delete {
-            background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
-            color: white;
-        }
+        .btn-delete { background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%); color: white; }
         .btn-delete:hover { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(255, 75, 43, 0.4); }
+        
+        .btn-gallery { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
+        .btn-gallery:hover { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(245, 87, 108, 0.4); }
 
         #fileInput { display: none; }
 
@@ -99,42 +97,41 @@
             flex-direction: column;
             align-items: center;
         }
-
         .stat-box:hover { transform: scale(1.03); }
-
-        .stat-number {
-            font-size: 1.8rem;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-
-        .stat-label {
-            font-size: 0.85rem;
-            opacity: 0.8;
-            text-transform: uppercase;
-            margin-bottom: 10px;
-        }
-
-        /* Small Download Button */
+        .stat-number { font-size: 1.8rem; font-weight: bold; margin-bottom: 5px; }
+        .stat-label { font-size: 0.85rem; opacity: 0.8; text-transform: uppercase; margin-bottom: 10px; }
         .btn-sm-download {
-            background: rgba(255,255,255,0.1);
-            border: none;
-            color: var(--text-white);
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            cursor: pointer;
-            transition: 0.2s;
+            background: rgba(255,255,255,0.1); border: none; color: var(--text-white); padding: 5px 15px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; transition: 0.2s;
         }
-        .btn-sm-download:hover {
-            background: var(--text-color);
-            color: white;
-        }
-
-        /* Colors for stats */
+        .btn-sm-download:hover { background: var(--text-color); color: white; }
         .total-box .stat-number { color: #3498db; }
         .success-box .stat-number { color: var(--success-color); }
         .failed-box .stat-number { color: var(--danger-color); }
+
+        /* --- Gallery Modal --- */
+        .modal {
+            display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: var(--modal-bg);
+            backdrop-filter: blur(5px);
+            align-items: center; justify-content: center;
+        }
+        .modal-content {
+            background-color: var(--card-bg); margin: auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 900px; border-radius: 15px;
+            max-height: 80vh; overflow-y: auto;
+        }
+        .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .close:hover { color: white; }
+        
+        .gallery-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; margin-top: 20px;
+        }
+        .gallery-item {
+            background: var(--bg-color); padding: 10px; border-radius: 8px; text-align: center; border: 1px solid #333; position: relative;
+        }
+        .gallery-item img {
+            width: 100%; height: auto; border-radius: 5px; cursor: pointer; transition: transform 0.2s;
+        }
+        .gallery-item img:hover { transform: scale(1.05); }
+        .gallery-info { font-size: 0.75rem; color: #aaa; margin-top: 5px; }
 
     </style>
 </head>
@@ -146,11 +143,13 @@
         <div class="actions">
             <input type="file" id="fileInput" accept=".txt" onchange="handleFileUpload(this)">
             <button class="btn btn-upload" onclick="document.getElementById('fileInput').click()">
-                <i class="fas fa-cloud-upload-alt"></i> Upload Numbers
+                <i class="fas fa-cloud-upload-alt"></i> Upload
             </button>
-            
             <button class="btn btn-delete" onclick="confirmDelete()">
                 <i class="fas fa-trash-alt"></i> Delete All
+            </button>
+            <button class="btn btn-gallery" onclick="openGallery()">
+                <i class="fas fa-images"></i> Error Gallery
             </button>
         </div>
 
@@ -158,53 +157,55 @@
             <div class="stat-box total-box">
                 <span class="stat-number" id="pendingCount">0</span>
                 <span class="stat-label">Pending</span>
-                <button class="btn-sm-download" onclick="downloadList('pending')">
-                    <i class="fas fa-download"></i> Save
-                </button>
+                <button class="btn-sm-download" onclick="downloadList('pending')"><i class="fas fa-download"></i> Save</button>
             </div>
-            
             <div class="stat-box success-box">
                 <span class="stat-number" id="successCount">0</span>
                 <span class="stat-label">Success</span>
-                <button class="btn-sm-download" onclick="downloadList('success')">
-                    <i class="fas fa-download"></i> Save
-                </button>
+                <button class="btn-sm-download" onclick="downloadList('success')"><i class="fas fa-download"></i> Save</button>
             </div>
-            
             <div class="stat-box failed-box">
                 <span class="stat-number" id="failedCount">0</span>
                 <span class="stat-label">Failed</span>
-                <button class="btn-sm-download" onclick="downloadList('failed')">
-                    <i class="fas fa-download"></i> Save
-                </button>
+                <button class="btn-sm-download" onclick="downloadList('failed')"><i class="fas fa-download"></i> Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="galleryModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeGallery()">&times;</span>
+            <h2 style="color: var(--danger-color); text-align: center;">Recent Failed Errors</h2>
+            <div class="gallery-grid" id="galleryGrid">
+                <p style="color: #aaa; width: 100%; text-align: center;" id="noImagesMsg">No error images found.</p>
             </div>
         </div>
     </div>
 
     <script>
         const API_BASE = ""; 
+        let galleryInterval = null;
+        let displayedImageIds = new Set(); // Track displayed images to avoid full reload
 
         document.addEventListener('DOMContentLoaded', () => {
             fetchStats();
-            setInterval(fetchStats, 5000); // Auto-refresh stats every 5s
+            setInterval(fetchStats, 5000); 
         });
 
+        // --- Stats & Numbers ---
         async function fetchStats() {
             try {
                 const response = await fetch(`${API_BASE}/stats`);
                 const data = await response.json();
-                
                 animateValue("pendingCount", parseInt(document.getElementById("pendingCount").innerText), data.pending, 1000);
                 animateValue("successCount", parseInt(document.getElementById("successCount").innerText), data.success, 1000);
                 animateValue("failedCount", parseInt(document.getElementById("failedCount").innerText), data.failed, 1000);
-
             } catch (error) { console.error("Stats error:", error); }
         }
 
         async function handleFileUpload(input) {
             const file = input.files[0];
             if (!file) return;
-
             const formData = new FormData();
             formData.append("file", file);
 
@@ -216,59 +217,41 @@
             });
 
             try {
-                const response = await fetch(`${API_BASE}/upload`, {
-                    method: "POST",
-                    body: formData
-                });
+                const response = await fetch(`${API_BASE}/upload`, { method: "POST", body: formData });
                 const result = await response.json();
-
                 if (response.ok) {
                     Swal.fire('Success!', result.message, 'success');
                     fetchStats();
-                } else {
-                    Swal.fire('Error!', 'Failed to upload.', 'error');
-                }
-            } catch (error) {
-                Swal.fire('Error!', 'Server connection failed.', 'error');
-            }
+                } else { Swal.fire('Error!', 'Failed to upload.', 'error'); }
+            } catch (error) { Swal.fire('Error!', 'Server connection failed.', 'error'); }
             input.value = '';
         }
 
         function confirmDelete() {
             Swal.fire({
                 title: 'Nuke Everything?',
-                text: "This will wipe ALL Pending, Success, and Failed numbers from the database forever!",
+                text: "This will wipe ALL data!",
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#e74c3c',
                 cancelButtonColor: '#3085d6',
                 confirmButtonText: 'Yes, Nuke it!'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    performDelete();
-                }
-            })
+            }).then((result) => { if (result.isConfirmed) performDelete(); })
         }
 
         async function performDelete() {
             try {
                 const response = await fetch(`${API_BASE}/delete_all`, { method: "DELETE" });
                 const result = await response.json();
-
                 if (response.ok) {
                     Swal.fire('Deleted!', `Cleared ${result.deleted_count} total records.`, 'success');
                     fetchStats();
-                } else {
-                    Swal.fire('Error!', 'Failed to delete.', 'error');
-                }
-            } catch (error) {
-                Swal.fire('Error!', 'Connection failed.', 'error');
-            }
+                    displayedImageIds.clear(); // Clear gallery cache
+                } else { Swal.fire('Error!', 'Failed to delete.', 'error'); }
+            } catch (error) { Swal.fire('Error!', 'Connection failed.', 'error'); }
         }
 
-        function downloadList(category) {
-            window.location.href = `${API_BASE}/download/${category}`;
-        }
+        function downloadList(category) { window.location.href = `${API_BASE}/download/${category}`; }
 
         function animateValue(id, start, end, duration) {
             if (start === end) return;
@@ -277,14 +260,78 @@
             const increment = end > start ? 1 : -1;
             const stepTime = Math.abs(Math.floor(duration / range));
             const obj = document.getElementById(id);
-            
-            const timer = setInterval(function() {
+            const timer = setInterval(() => {
                 current += increment;
                 obj.innerText = current;
-                if (current == end) { clearInterval(timer); }
+                if (current == end) clearInterval(timer);
             }, stepTime > 0 ? stepTime : 10);
-            
             if (stepTime === 0) { clearInterval(timer); obj.innerText = end; }
+        }
+
+        // --- Gallery Logic ---
+        function openGallery() {
+            document.getElementById('galleryModal').style.display = 'flex';
+            fetchGalleryImages(); // Initial load
+            galleryInterval = setInterval(fetchGalleryImages, 5000); // Poll every 5s
+        }
+
+        function closeGallery() {
+            document.getElementById('galleryModal').style.display = 'none';
+            if (galleryInterval) clearInterval(galleryInterval);
+        }
+
+        async function fetchGalleryImages() {
+            try {
+                const response = await fetch(`${API_BASE}/failed-images`);
+                const data = await response.json();
+                const grid = document.getElementById('galleryGrid');
+                
+                if (data.images.length === 0) {
+                    grid.innerHTML = '<p style="color: #aaa; width: 100%; text-align: center;">No error images found.</p>';
+                    return;
+                } else {
+                     // Only remove "No images" msg if images exist
+                     const noMsg = document.getElementById('noImagesMsg');
+                     if(noMsg) noMsg.remove();
+                }
+
+                // Smart Update: Only add new images
+                // We actually want to replace the grid content cleanly to maintain sort order, 
+                // but to avoid flicker, we can check if IDs match.
+                // Since user asked for "Refresh if new comes, old deleted", full replace is safer for sync logic
+                // IF we want smooth append, we can do complex diffing. 
+                // Given 10 items, full replace is fast enough but let's try to be smart.
+                
+                // Simplified Logic for Stability: Just render fresh. 
+                // Since it's Base64 images, recreating DOM elements is safer to ensure order (Latest First).
+                grid.innerHTML = data.images.map(img => `
+                    <div class="gallery-item">
+                        <img src="data:image/jpeg;base64,${img.image}" onclick="viewImage(this.src)">
+                        <div class="gallery-info">
+                            <strong>${img.phone}</strong><br>${img.timestamp}
+                        </div>
+                    </div>
+                `).join('');
+
+            } catch (error) { console.error("Gallery fetch error:", error); }
+        }
+
+        function viewImage(src) {
+            Swal.fire({
+                imageUrl: src,
+                imageAlt: 'Error Screenshot',
+                width: '80%',
+                background: '#1a1a2e',
+                showConfirmButton: false
+            });
+        }
+        
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('galleryModal');
+            if (event.target == modal) {
+                closeGallery();
+            }
         }
     </script>
 </body>
